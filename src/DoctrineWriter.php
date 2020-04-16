@@ -4,7 +4,7 @@ namespace Port\Doctrine;
 
 use Port\Doctrine\Exception\UnsupportedDatabaseTypeException;
 use Port\Writer;
-use Doctrine\Common\Util\Inflector;
+use Doctrine\Common\Inflector\Inflector;
 use Doctrine\DBAL\Logging\SQLLogger;
 use Doctrine\Common\Persistence\ObjectManager;
 use Doctrine\Common\Persistence\Mapping\ClassMetadata;
@@ -159,6 +159,8 @@ class DoctrineWriter implements Writer, Writer\FlushableWriter
         if (true === $this->truncate) {
             $this->truncateTable();
         }
+
+        return $this;
     }
 
     /**
@@ -189,7 +191,7 @@ class DoctrineWriter implements Writer, Writer\FlushableWriter
     public function flush()
     {
         $this->objectManager->flush();
-        $this->objectManager->clear($this->objectName);
+        $this->objectManager->clear();
     }
 
     /**
