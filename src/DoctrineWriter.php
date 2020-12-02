@@ -2,12 +2,18 @@
 
 namespace Port\Doctrine;
 
+use DateTime;
+use Doctrine\Inflector\InflectorFactory;
+use Doctrine\ODM\MongoDB\DocumentManager;
+use Doctrine\ORM\EntityManager;
+use Doctrine\Persistence\Mapping\ClassMetadata;
+use Doctrine\Persistence\ObjectManager;
+use Doctrine\Persistence\ObjectRepository;
+use InvalidArgumentException;
 use Port\Doctrine\Exception\UnsupportedDatabaseTypeException;
 use Port\Writer;
-use Doctrine\Common\Util\Inflector;
 use Doctrine\DBAL\Logging\SQLLogger;
-use Doctrine\Common\Persistence\ObjectManager;
-use Doctrine\Common\Persistence\Mapping\ClassMetadata;
+use RuntimeException;
 
 /**
  * A bulk Doctrine writer
@@ -102,7 +108,7 @@ class DoctrineWriter implements Writer, Writer\FlushableWriter
         }
 
         if (!method_exists($this->objectRepository, $lookupMethod)) {
-            throw new \InvalidArgumentException(
+            throw new InvalidArgumentException(
                 sprintf(
                     'Repository %s has no method %s',
                     get_class($this->objectRepository),
@@ -150,7 +156,7 @@ class DoctrineWriter implements Writer, Writer\FlushableWriter
     /**
      * Disable Doctrine logging
      *
-     * @return $this
+     * @return self
      */
     public function prepare()
     {
@@ -159,6 +165,8 @@ class DoctrineWriter implements Writer, Writer\FlushableWriter
         if (true === $this->truncate) {
             $this->truncateTable();
         }
+
+        return $this;
     }
 
     /**
@@ -202,7 +210,7 @@ class DoctrineWriter implements Writer, Writer\FlushableWriter
         $className = $this->objectMetadata->getName();
 
         if (class_exists($className) === false) {
-            throw new \RuntimeException('Unable to create new instance of ' . $className);
+            throw new RuntimeException('Unable to create new instance of ' . $className);
         }
 
         return new $className;
@@ -231,7 +239,8 @@ class DoctrineWriter implements Writer, Writer\FlushableWriter
         $fieldNames = array_merge($this->objectMetadata->getFieldNames(), $this->objectMetadata->getAssociationNames());
         foreach ($fieldNames as $fieldName) {
             $value = null;
-            $classifiedFieldName = Inflector::classify($fieldName);
+            $inflector = InflectorFactory::create()->build();
+            $classifiedFieldName = $inflector->classify($fieldName);
             if (isset($item[$fieldName])) {
                 $value = $item[$fieldName];
             }
@@ -240,7 +249,7 @@ class DoctrineWriter implements Writer, Writer\FlushableWriter
                 continue;
             }
 
-            if (!($value instanceof \DateTime)
+            if (!($value instanceof DateTime)
                 || $value != $this->objectMetadata->getFieldValue($object, $fieldName)
             ) {
                 $setter = 'set' . $classifiedFieldName;
@@ -278,13 +287,14 @@ class DoctrineWriter implements Writer, Writer\FlushableWriter
      */
     protected function truncateTable()
     {
-        if ($this->objectManager instanceof \Doctrine\ORM\EntityManager) {
+        if ($this->objectManager instanceof EntityManager) {
             $tableName = $this->objectMetadata->table['name'];
             $connection = $this->objectManager->getConnection();
             $query = $connection->getDatabasePlatform()->getTruncateTableSQL($tableName, true);
             $connection->executeQuery($query);
-        } elseif ($this->objectManager instanceof \Doctrine\ODM\MongoDB\DocumentManager) {
-            $this->objectManager->getDocumentCollection($this->objectName)->remove(array());
+        } elseif ($this->objectManager instanceof DocumentManager) {
+            //$this->objectManager->getDocumentCollection($this->objectName)->remove(array());
+            $this->objectManager->getDocumentCollection($this->objectName);
         }
     }
 
@@ -294,7 +304,7 @@ class DoctrineWriter implements Writer, Writer\FlushableWriter
     protected function disableLogging()
     {
         //TODO: do we need to add support for MongoDB logging?
-        if (!($this->objectManager instanceof \Doctrine\ORM\EntityManager)) return;
+        if (!($this->objectManager instanceof EntityManager)) return;
 
         $config = $this->objectManager->getConnection()->getConfiguration();
         $this->originalLogger = $config->getSQLLogger();
@@ -307,7 +317,7 @@ class DoctrineWriter implements Writer, Writer\FlushableWriter
     protected function reEnableLogging()
     {
         //TODO: do we need to add support for MongoDB logging?
-        if (!($this->objectManager instanceof \Doctrine\ORM\EntityManager)) return;
+        if (!($this->objectManager instanceof EntityManager)) return;
 
         $config = $this->objectManager->getConnection()->getConfiguration();
         $config->setSQLLogger($this->originalLogger);
@@ -345,8 +355,8 @@ class DoctrineWriter implements Writer, Writer\FlushableWriter
 
     protected function ensureSupportedObjectManager(ObjectManager $objectManager)
     {
-        if (!($objectManager instanceof \Doctrine\ORM\EntityManager
-            || $objectManager instanceof \Doctrine\ODM\MongoDB\DocumentManager)
+        if (!($objectManager instanceof EntityManager
+            || $objectManager instanceof DocumentManager)
         ) {
             throw new UnsupportedDatabaseTypeException($objectManager);
         }
